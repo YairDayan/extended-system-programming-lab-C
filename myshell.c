@@ -236,20 +236,25 @@ int main(int argc, char **argv)
 
       close(pipefd[0]); /* parent no longer needs the read end */
 
+      cmdLine *rightCmd = parsedLine->next;
+
       if (debug) {
         fprintf(stderr, "PID: %d\n", pid);
         fprintf(stderr, "Executing command: %s\n", parsedLine->arguments[0]);
         fprintf(stderr, "PID: %d\n", pid2);
-        fprintf(stderr, "Executing command: %s\n", parsedLine->next->arguments[0]);
+        fprintf(stderr, "Executing command: %s\n", rightCmd->arguments[0]);
       }
 
       /* Wait for both children unless the command was run in the background */
-      if (parsedLine->next->blocking) {
+      if (rightCmd->blocking) {
         waitpid(pid, NULL, 0);
         waitpid(pid2, NULL, 0);
       }
 
-      freeCmdLines(parsedLine);
+      parsedLine->next = NULL;
+      addProcess(&process_list, parsedLine, pid);
+      addProcess(&process_list, rightCmd, pid2);
+
       continue;
     }
 
