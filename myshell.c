@@ -58,83 +58,6 @@ int signalCommand(cmdLine *pCmdLine)
   return 1;
 }
 
-/* Run left | right: one pipe, two children. Returns 1 if handled (including errors). */
-int executePipe(cmdLine *left, int debug)
-{
-  cmdLine *right = left->next;
-  int pipefd[2];
-  pid_t pid1;
-  pid_t pid2;
-
-  if (right == NULL) {
-    return 0;
-  }
-  if (right->next != NULL) {
-    fprintf(stderr, "error: only one pipe is supported\n");
-    return 1;
-  }
-  if (left->outputRedirect) {
-    fprintf(stderr, "error: output redirection on the left side of a pipe\n");
-    return 1;
-  }
-  if (right->inputRedirect) {
-    fprintf(stderr, "error: input redirection on the right side of a pipe\n");
-    return 1;
-  }
-
-  if (pipe(pipefd) == -1) {
-    perror("pipe");
-    return 1;
-  }
-
-  pid1 = fork();
-  if (pid1 == -1) {
-    perror("fork");
-    close(pipefd[0]);
-    close(pipefd[1]);
-    return 1;
-  }
-  if (pid1 == 0) {
-    close(pipefd[0]);
-    close(1);
-    dup(pipefd[1]);
-    close(pipefd[1]);
-    execute(left);
-  }
-
-  close(pipefd[1]);
-
-  pid2 = fork();
-  if (pid2 == -1) {
-    perror("fork");
-    close(pipefd[0]);
-    return 1;
-  }
-  if (pid2 == 0) {
-    close(0);
-    dup(pipefd[0]);
-    close(pipefd[0]);
-    execute(right);
-  }
-
-  close(pipefd[0]);
-
-  if (debug) {
-    fprintf(stderr, "PID: %d\n", pid1);
-    fprintf(stderr, "Executing command: %s\n", left->arguments[0]);
-    fprintf(stderr, "PID: %d\n", pid2);
-    fprintf(stderr, "Executing command: %s\n", right->arguments[0]);
-  }
-
-  /* LineParser sets blocking only on the last command in the chain. */
-  if (right->blocking) {
-    waitpid(pid1, NULL, 0);
-    waitpid(pid2, NULL, 0);
-  }
-
-  return 1;
-}
-
 int main(int argc, char **argv)
 {
   char path[PATH_MAX];
@@ -184,10 +107,6 @@ int main(int argc, char **argv)
       continue;
     }
     if (signalCommand(parsedLine)) {
-      freeCmdLines(parsedLine);
-      continue;
-    }
-    if (executePipe(parsedLine, debug)) {
       freeCmdLines(parsedLine);
       continue;
     }
