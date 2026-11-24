@@ -110,6 +110,61 @@ int main(int argc, char **argv)
       freeCmdLines(parsedLine);
       continue;
     }
+    if (parsedLine->next != NULL) {
+      int pipefd[2];
+      pid_t pid2;
+
+      if (parsedLine->outputRedirect != NULL ||
+          parsedLine->next->inputRedirect != NULL) {
+        fprintf(stderr, "pipe: invalid redirection\n");
+        freeCmdLines(parsedLine);
+        continue;
+      }
+
+      if (pipe(pipefd) == -1) {
+        perror("pipe");
+        freeCmdLines(parsedLine);
+        continue;
+      }
+
+      pid = fork();
+      if (pid == 0) {
+        close(1);
+        dup(pipefd[1]);
+        close(pipefd[1]);
+        close(pipefd[0]);
+        execute(parsedLine);
+      }
+
+      close(pipefd[1]);
+
+      pid2 = fork();
+      if (pid2 == 0) {
+        close(0);
+        dup(pipefd[0]);
+        close(pipefd[0]);
+        execute(parsedLine->next);
+      }
+
+      close(pipefd[0]);
+
+      if (debug) {
+        fprintf(stderr, "PID: %d\n", pid);
+        fprintf(stderr, "Executing command: %s\n", parsedLine->arguments[0]);
+        fprintf(stderr, "PID: %d\n", pid2);
+        fprintf(stderr, "Executing command: %s\n",
+                parsedLine->next->arguments[0]);
+      }
+
+      if (parsedLine->next->blocking) {
+        waitpid(pid, NULL, 0);
+        waitpid(pid2, NULL, 0);
+      }
+
+      freeCmdLines(parsedLine);
+      continue;
+    }
+
     pid = fork();
     if (pid == 0) {
       execute(parsedLine);
