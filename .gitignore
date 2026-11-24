@@ -1,0 +1,14 @@
+# Build artifacts
+mypipeline
+myshell
+looper
+*.o
+*.out
+*.dSYM/
+
+# Course materials / local notes
+*.pdf
+*.zip
+/עבודה C - הגשה/
+.cursor/
+.DS_Store
