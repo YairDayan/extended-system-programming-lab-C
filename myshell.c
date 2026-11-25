@@ -41,6 +41,7 @@ void updateProcessStatus(process *process_list, int pid, int status);
 void updateProcessList(process **process_list);
 void freeProcessList(process *process_list);
 void addHistory(history *hist, const char *line);
+char *getLastCommand(history *hist);
 char *getHistory(history *hist, int n);
 void printHistory(history *hist);
 
@@ -248,6 +249,24 @@ void addHistory(history *hist, const char *line)
   hist->lines[hist->next] = copy;
   hist->next = (hist->next + 1) % HISTLEN;
   hist->count++;
+}
+
+/*
+ * Return the most recent command that is not the built-in "history"
+ * (used by !!). Returns NULL if none found.
+ */
+char *getLastCommand(history *hist)
+{
+  int i;
+  int index;
+
+  for (i = 0; i < hist->count; i++) {
+    index = (hist->next - 1 - i + HISTLEN) % HISTLEN;
+    if (strcmp(hist->lines[index], "history") != 0) {
+      return hist->lines[index];
+    }
+  }
+  return NULL;
 }
 
 /* Return history entry n (1-based), or NULL if n is out of range */
