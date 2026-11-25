@@ -252,7 +252,7 @@ int main(int argc, char **argv)
     /* Built-in: quit — exit the shell */
     if (strcmp(parsedLine->arguments[0], "quit") == 0) {
       freeCmdLines(parsedLine);
-      
+      freeProcessList(process_list); /* release tracked processes before exit */
       return 0;
     }
 
@@ -339,10 +339,6 @@ int main(int argc, char **argv)
         waitpid(pid2, NULL, 0);
       }
 
-      /*
-       * Unlink the two cmdLines so each process node owns one command alone,
-       * then track both children. Do not freeCmdLines — the list holds them.
-       */
       parsedLine->next = NULL;
       addProcess(&process_list, parsedLine, pid);
       addProcess(&process_list, rightCmd, pid2);
@@ -355,7 +351,6 @@ int main(int argc, char **argv)
     if (pid == 0) {
       execute(parsedLine);
     }
-    /* Parent keeps the cmdLine in the process list (no freeCmdLines here) */
     addProcess(&process_list, parsedLine, pid);
 
     if (debug) {
@@ -367,6 +362,6 @@ int main(int argc, char **argv)
       waitpid(pid, NULL, 0);
     }
   }
-
+  freeProcessList(process_list); /* EOF path: free any remaining process nodes */
   return 0;
 }
