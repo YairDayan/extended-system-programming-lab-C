@@ -18,9 +18,19 @@ typedef struct process {
   struct process *next; /* next process in chain */
 } process;
 
+/* Process status values stored in process.status */
 #define TERMINATED -1
 #define RUNNING 1
 #define SUSPENDED 0
+
+/* Forward declarations */
+void execute(cmdLine *pCmdLine);
+int signalCommand(cmdLine *pCmdLine);
+void addProcess(process **process_list, cmdLine *cmd, pid_t pid);
+void printProcessList(process **process_list);
+void updateProcessStatus(process *process_list, int pid, int status);
+void updateProcessList(process **process_list);
+void freeProcessList(process *process_list);
 
 /*
  * Run a command in the current process (typically after fork).
@@ -96,9 +106,13 @@ void addProcess(process **process_list, cmdLine *cmd, pid_t pid)
   *process_list = newProcess;
 }
 
-/* Print all processes currently tracked by the shell */
+/*
+ * Refresh statuses, print the process table, then drop entries that were
+ * shown as Terminated so they appear once and are removed afterwards.
+ */
 void printProcessList(process **process_list)
 {
+  updateProcessList(process_list); /* refresh RUNNING / SUSPENDED / TERMINATED */
   process *curr = *process_list;
   int i;
   const char *statusStr;
@@ -120,8 +134,29 @@ void printProcessList(process **process_list)
 
     curr = curr->next;
   }
+
+  /* Remove freshly terminated processes after printing them once */
+  process *prev = NULL;
+  curr = *process_list;
+  while (curr != NULL) {
+    if (curr->status == TERMINATED) {
+      process *toDelete = curr;
+      curr = curr->next;
+      if (prev == NULL) {
+        *process_list = curr;
+      } else {
+        prev->next = curr;
+      }
+      freeCmdLines(toDelete->cmd);
+      free(toDelete);
+    } else {
+      prev = curr;
+      curr = curr->next;
+    }
+  }
 }
 
+/* Find the process with the given pid and set its status */
 void updateProcessStatus(process *process_list, int pid, int status)
 {
   process *curr = process_list;
@@ -133,6 +168,11 @@ void updateProcessStatus(process *process_list, int pid, int status)
     curr = curr->next;
   }
 }
+
+/*
+ * Non-blocking waitpid on every tracked child to refresh its status.
+ * WNOHANG: do not block; WUNTRACED / WCONTINUED: notice stop and resume.
+ */
 void updateProcessList(process **process_list)
 {
   process *curr = *process_list;
@@ -142,14 +182,13 @@ void updateProcessList(process **process_list)
   while (curr != NULL) {
     result = waitpid(curr->pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
     if (result == -1) {
+      /* No such child anymore (already reaped or gone) */
       curr->status = TERMINATED;
-
     } else if (result == curr->pid) {
       if (WIFEXITED(status) || WIFSIGNALED(status)) {
         curr->status = TERMINATED;
       } else if (WIFSTOPPED(status)) {
         curr->status = SUSPENDED;
-
       } else if (WIFCONTINUED(status)) {
         curr->status = RUNNING;
       }
@@ -157,6 +196,8 @@ void updateProcessList(process **process_list)
     curr = curr->next;
   }
 }
+
+/* Free every process node and the cmdLine it owns */
 void freeProcessList(process *process_list)
 {
   process *curr = process_list;
@@ -167,9 +208,10 @@ void freeProcessList(process *process_list)
     curr = next;
   }
 }
+
 int main(int argc, char **argv)
 {
-  process *process_list = NULL;
+  process *process_list = NULL; /* head of the shell's process list */
   char path[PATH_MAX];
   char input[2048];
   cmdLine *parsedLine;
@@ -210,6 +252,7 @@ int main(int argc, char **argv)
     /* Built-in: quit — exit the shell */
     if (strcmp(parsedLine->arguments[0], "quit") == 0) {
       freeCmdLines(parsedLine);
+      
       return 0;
     }
 
@@ -296,6 +339,10 @@ int main(int argc, char **argv)
         waitpid(pid2, NULL, 0);
       }
 
+      /*
+       * Unlink the two cmdLines so each process node owns one command alone,
+       * then track both children. Do not freeCmdLines — the list holds them.
+       */
       parsedLine->next = NULL;
       addProcess(&process_list, parsedLine, pid);
       addProcess(&process_list, rightCmd, pid2);
@@ -308,6 +355,7 @@ int main(int argc, char **argv)
     if (pid == 0) {
       execute(parsedLine);
     }
+    /* Parent keeps the cmdLine in the process list (no freeCmdLines here) */
     addProcess(&process_list, parsedLine, pid);
 
     if (debug) {
