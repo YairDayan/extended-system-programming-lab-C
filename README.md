@@ -7,7 +7,7 @@ Extended System Programming Laboratory. Extends the Lab 2 shell with pipelines, 
 | File | Role |
 |------|------|
 | `mypipeline.c` | Standalone 2-process pipeline: `ls -lsa \| tail -n 3` |
-| `myshell.c` | Shell: Lab 2 features + pipe, `procs`, history (`history` / `!!` / `!n`) |
+| `myshell.c` | Shell with pipes, process list, signals, and history |
 | `looper.c` | Test process that prints and forwards `SIGINT`, `SIGTSTP`, `SIGCONT` |
 | `LineParser.c` / `LineParser.h` | Course-provided command-line parser (supports `|`) |
 | `Makefile` | Builds `mypipeline`, `myshell`, and `looper` |
@@ -34,16 +34,17 @@ make clean
 
 ### Shell features
 
-- Everything from Lab 2: prompt, `fork`/`execvp`, `cd`, `quit`, background (`&`), I/O redirection, `zzzz` / `kuku` / `blast`
-- Single pipe between two commands, e.g. `ls | wc -l`
+- Lab 2 base: prompt with cwd, `fork`/`execvp`, `cd`, `quit`, background (`&`), I/O redirection
+- One pipe between two commands via `executePipe`, e.g. `ls | wc -l`
 - Combined redirection + pipe, e.g. `cat < in.txt | tail -n 2 > out.txt`
-- Process manager: `procs` lists forked jobs (`Running` / `Suspended` / `Terminated`)
+- Illegal redirect+pipe combos are rejected (no new processes)
+- Process manager: `procs` refreshes statuses then prints `Running` / `Suspended` / `Terminated` (terminated entries are removed after one print)
+- Signals: `zzzz` / `kuku` / `blast` update the process list on success
 - History ring of length `HISTLEN` (default 10): `history`, `!!`, `!n`
 
 ### Example
 
 ```text
-/path/to/lab> ./mypipeline
 /path/to/lab> ./myshell
 /path/to/lab> ls -lsa | tail -n 3
 /path/to/lab> sleep 5 &
@@ -60,11 +61,13 @@ make clean
 
 ## Tasks covered
 
-- **Part 1** — `mypipeline`: create pipe, fork two children, redirect with `dup`, wait in order  
-- **Part 2** — pipe inside `myshell` (one `|`, keep Lab 2 redirection; reject illegal redirect+pipe combos)  
-- **Part 3a–3c** — process list (`addProcess` / `printProcessList` / `updateProcessList`), `procs`, signal commands  
-- **Part 4** — circular history queue: `history`, `!!`, `!n`
+| Part | What |
+|------|------|
+| 1 | `mypipeline` — pipe, two children, `dup`, wait in order |
+| 2 | Pipe inside `myshell` (`executePipe`) |
+| 3a–3c | Process list, `procs`, status updates, signal commands |
+| 4 | Circular history: `history`, `!!`, `!n` |
 
 ## Submission
 
-Zip with `mypipeline.c`, `myshell.c`, and a makefile that builds `mypipeline` and `myshell`.
+Zip with `mypipeline.c`, `myshell.c`, and a makefile that builds `mypipeline` and `myshell`. Use `#include <linux/limits.h>` (no macOS fallback) for the submitted sources.

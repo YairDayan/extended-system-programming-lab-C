@@ -136,10 +136,13 @@ void addProcess(process **process_list, cmdLine *cmd, pid_t pid)
  */
 void printProcessList(process **process_list)
 {
-  updateProcessList(process_list); /* refresh RUNNING / SUSPENDED / TERMINATED */
-  process *curr = *process_list;
+  process *curr;
+  process *prev;
   int i;
   const char *statusStr;
+
+  updateProcessList(process_list); /* refresh RUNNING / SUSPENDED / TERMINATED */
+  curr = *process_list;
   printf("PID\t\tCommand\t\tSTATUS\n");
 
   while (curr != NULL) {
@@ -160,7 +163,7 @@ void printProcessList(process **process_list)
   }
 
   /* Remove freshly terminated processes after printing them once */
-  process *prev = NULL;
+  prev = NULL;
   curr = *process_list;
   while (curr != NULL) {
     if (curr->status == TERMINATED) {
