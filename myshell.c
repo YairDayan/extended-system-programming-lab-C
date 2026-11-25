@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <unistd.h>
-#include <limits.h>
+#include <linux/limits.h>
 #include "LineParser.h"
 #include <string.h>
 #include <sys/wait.h>
