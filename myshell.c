@@ -122,6 +122,51 @@ void printProcessList(process **process_list)
   }
 }
 
+void updateProcessStatus(process *process_list, int pid, int status)
+{
+  process *curr = process_list;
+  while (curr != NULL) {
+    if (curr->pid == pid) {
+      curr->status = status;
+      break;
+    }
+    curr = curr->next;
+  }
+}
+void updateProcessList(process **process_list)
+{
+  process *curr = *process_list;
+  int status;
+  int result;
+
+  while (curr != NULL) {
+    result = waitpid(curr->pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
+    if (result == -1) {
+      curr->status = TERMINATED;
+
+    } else if (result == curr->pid) {
+      if (WIFEXITED(status) || WIFSIGNALED(status)) {
+        curr->status = TERMINATED;
+      } else if (WIFSTOPPED(status)) {
+        curr->status = SUSPENDED;
+
+      } else if (WIFCONTINUED(status)) {
+        curr->status = RUNNING;
+      }
+    }
+    curr = curr->next;
+  }
+}
+void freeProcessList(process *process_list)
+{
+  process *curr = process_list;
+  while (curr != NULL) {
+    process *next = curr->next;
+    freeCmdLines(curr->cmd);
+    free(curr);
+    curr = next;
+  }
+}
 int main(int argc, char **argv)
 {
   process *process_list = NULL;
