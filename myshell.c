@@ -25,7 +25,7 @@ typedef struct process {
 
 /* Forward declarations */
 void execute(cmdLine *pCmdLine);
-int signalCommand(cmdLine *pCmdLine);
+int signalCommand(cmdLine *pCmdLine, process **process_list);
 void addProcess(process **process_list, cmdLine *cmd, pid_t pid);
 void printProcessList(process **process_list);
 void updateProcessStatus(process *process_list, int pid, int status);
@@ -64,19 +64,24 @@ void execute(cmdLine *pCmdLine)
 
 /*
  * Handle built-in signal commands: zzzz (SIGSTOP), kuku (SIGCONT), blast (SIGINT).
- * Expects a process id as the second argument.
+ * Expects a process id as the second argument. On success, updates that process
+ * in process_list to SUSPENDED / RUNNING / TERMINATED as appropriate.
  * Returns 1 if the command was a signal command (handled here), 0 otherwise.
  */
-int signalCommand(cmdLine *pCmdLine)
+int signalCommand(cmdLine *pCmdLine, process **process_list)
 {
   int sig;
   int target;
+  int newStatus;
   if (strcmp(pCmdLine->arguments[0], "zzzz") == 0) {
     sig = SIGSTOP;
+    newStatus = SUSPENDED;
   } else if (strcmp(pCmdLine->arguments[0], "kuku") == 0) {
     sig = SIGCONT;
+    newStatus = RUNNING;
   } else if (strcmp(pCmdLine->arguments[0], "blast") == 0) {
     sig = SIGINT;
+    newStatus = TERMINATED;
   } else {
     return 0; /* not a signal command */
   }
@@ -91,6 +96,10 @@ int signalCommand(cmdLine *pCmdLine)
   }
   if (kill(target, sig) == -1) {
     perror("kill");
+  } else {
+    /* kill succeeded — reflect the new status in the process list */
+    printf("%s: signal sent to process %d\n", pCmdLine->arguments[0], target);
+    updateProcessStatus(*process_list, target, newStatus);
   }
   return 1;
 }
@@ -275,7 +284,7 @@ int main(int argc, char **argv)
     }
 
     /* Built-in signal commands (zzzz / kuku / blast) */
-    if (signalCommand(parsedLine)) {
+    if (signalCommand(parsedLine, &process_list)) {
       freeCmdLines(parsedLine);
       continue;
     }
