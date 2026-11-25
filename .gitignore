@@ -10,5 +10,6 @@ looper
 *.pdf
 *.zip
 /עבודה C - הגשה/
+/מעבדה C - הגשה/
 .cursor/
 .DS_Store
