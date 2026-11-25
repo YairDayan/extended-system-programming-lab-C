@@ -35,6 +35,7 @@ typedef struct history {
 /* Forward declarations */
 void execute(cmdLine *pCmdLine);
 int signalCommand(cmdLine *pCmdLine, process **process_list);
+void executePipe(cmdLine *parsedLine, process **process_list, int debug);
 void addProcess(process **process_list, cmdLine *cmd, pid_t pid);
 void printProcessList(process **process_list);
 void updateProcessStatus(process *process_list, int pid, int status);
@@ -307,6 +308,74 @@ void freeHistory(history *hist)
   hist->count = 0;
 }
 
+/*
+ * Pipeline: cmd1 | cmd2
+ * Create a pipe, fork two children, and connect stdout of the first
+ * to stdin of the second. Redirection that conflicts with the pipe is rejected.
+ */
+void executePipe(cmdLine *parsedLine, process **process_list, int debug)
+{
+  int pipefd[2];
+  pid_t pid;
+  pid_t pid2;
+  cmdLine *rightCmd;
+
+  if (parsedLine->outputRedirect != NULL || parsedLine->next->inputRedirect != NULL) {
+    fprintf(stderr, "pipe: invalid redirection\n");
+    freeCmdLines(parsedLine);
+    return;
+  }
+
+  if (pipe(pipefd) == -1) {
+    perror("pipe");
+    freeCmdLines(parsedLine);
+    return;
+  }
+
+  /* First child: write end of the pipe becomes stdout */
+  pid = fork();
+  if (pid == 0) {
+    close(1);
+    dup(pipefd[1]);
+    close(pipefd[1]);
+    close(pipefd[0]);
+    execute(parsedLine);
+  }
+
+  close(pipefd[1]); /* parent no longer needs the write end */
+
+  /* Second child: read end of the pipe becomes stdin */
+  pid2 = fork();
+  if (pid2 == 0) {
+    close(0);
+    dup(pipefd[0]);
+    close(pipefd[0]);
+    execute(parsedLine->next);
+  }
+
+  close(pipefd[0]); /* parent no longer needs the read end */
+
+  rightCmd = parsedLine->next;
+
+  if (debug) {
+    fprintf(stderr, "PID: %d\n", pid);
+    fprintf(stderr, "Executing command: %s\n", parsedLine->arguments[0]);
+    fprintf(stderr, "PID: %d\n", pid2);
+    fprintf(stderr, "Executing command: %s\n", rightCmd->arguments[0]);
+  }
+
+  /* Wait for both children unless the command was run in the background */
+  if (rightCmd->blocking) {
+    waitpid(pid, NULL, 0);
+    waitpid(pid2, NULL, 0);
+  }
+
+  /* Unlink so each process node owns one cmdLine; list keeps them (no free) */
+  parsedLine->next = NULL;
+  addProcess(process_list, parsedLine, pid);
+  addProcess(process_list, rightCmd, pid2);
+}
+
 int main(int argc, char **argv)
 {
   process *process_list = NULL; /* head of the shell's process list */
@@ -413,69 +482,9 @@ int main(int argc, char **argv)
       continue;
     }
 
-    /*
-     * Pipeline: cmd1 | cmd2
-     * Create a pipe, fork two children, and connect stdout of the first
-     * to stdin of the second. Redirection that conflicts with the pipe is rejected.
-     */
+    /* Pipeline: cmd1 | cmd2 */
     if (parsedLine->next != NULL) {
-      int pipefd[2];
-      pid_t pid2;
-
-      if (parsedLine->outputRedirect != NULL || parsedLine->next->inputRedirect != NULL) {
-        fprintf(stderr, "pipe: invalid redirection\n");
-        freeCmdLines(parsedLine);
-        continue;
-      }
-
-      if (pipe(pipefd) == -1) {
-        perror("pipe");
-        freeCmdLines(parsedLine);
-        continue;
-      }
-
-      /* First child: write end of the pipe becomes stdout */
-      pid = fork();
-      if (pid == 0) {
-        close(1);
-        dup(pipefd[1]);
-        close(pipefd[1]);
-        close(pipefd[0]);
-        execute(parsedLine);
-      }
-
-      close(pipefd[1]); /* parent no longer needs the write end */
-
-      /* Second child: read end of the pipe becomes stdin */
-      pid2 = fork();
-      if (pid2 == 0) {
-        close(0);
-        dup(pipefd[0]);
-        close(pipefd[0]);
-        execute(parsedLine->next);
-      }
-
-      close(pipefd[0]); /* parent no longer needs the read end */
-
-      cmdLine *rightCmd = parsedLine->next;
-
-      if (debug) {
-        fprintf(stderr, "PID: %d\n", pid);
-        fprintf(stderr, "Executing command: %s\n", parsedLine->arguments[0]);
-        fprintf(stderr, "PID: %d\n", pid2);
-        fprintf(stderr, "Executing command: %s\n", rightCmd->arguments[0]);
-      }
-
-      /* Wait for both children unless the command was run in the background */
-      if (rightCmd->blocking) {
-        waitpid(pid, NULL, 0);
-        waitpid(pid2, NULL, 0);
-      }
-
-      parsedLine->next = NULL;
-      addProcess(&process_list, parsedLine, pid);
-      addProcess(&process_list, rightCmd, pid2);
-
+      executePipe(parsedLine, &process_list, debug);
       continue;
     }
 

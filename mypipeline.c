@@ -16,13 +16,16 @@ int main(void)
 
   /* pipefd[0] = read end, pipefd[1] = write end */
   int pipefd[2];
+  pid_t pid;
+  pid_t pid2;
+
   if (pipe(pipefd) == -1) {
     perror("pipe");
     return 1;
   }
 
   fprintf(stderr, "(parent_process>forking…)\n");
-  pid_t pid = fork();
+  pid = fork();
   if (pid == 0) {
     /* Child 1: redirect stdout to the write end of the pipe, then exec ls */
     fprintf(stderr, "(child1>redirecting stdout to the write end of the pipe…)\n");
@@ -40,7 +43,7 @@ int main(void)
     close(pipefd[1]);
 
     fprintf(stderr, "(parent_process>forking…)\n");
-    pid_t pid2 = fork();
+    pid2 = fork();
     if (pid2 == 0) {
       /* Child 2: redirect stdin to the read end of the pipe, then exec tail */
       fprintf(stderr, "(child2>redirecting stdin to the read end of the pipe…)\n");
