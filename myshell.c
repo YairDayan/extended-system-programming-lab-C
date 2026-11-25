@@ -18,6 +18,15 @@ typedef struct process {
   struct process *next; /* next process in chain */
 } process;
 
+/* Circular history queue of unparsed command lines (Part 4) */
+#define HISTLEN 10
+typedef struct history {
+  char *lines[HISTLEN]; /* heap copies of previous command lines */
+  int oldest;           /* index of the oldest entry */
+  int next;             /* index where the next entry will be written */
+  int count;            /* how many entries are currently stored */
+} history;
+
 /* Process status values stored in process.status */
 #define TERMINATED -1
 #define RUNNING 1
@@ -31,6 +40,9 @@ void printProcessList(process **process_list);
 void updateProcessStatus(process *process_list, int pid, int status);
 void updateProcessList(process **process_list);
 void freeProcessList(process *process_list);
+void addHistory(history *hist, const char *line);
+char *getHistory(history *hist, int n);
+void printHistory(history *hist);
 
 /*
  * Run a command in the current process (typically after fork).
@@ -218,6 +230,47 @@ void freeProcessList(process *process_list)
   }
 }
 
+/*
+ * Append a copy of line to the circular history queue.
+ * When full, drop the oldest entry first (O(1) via oldest / next indices).
+ */
+void addHistory(history *hist, const char *line)
+{
+  char *copy = malloc(strlen(line) + 1);
+  strcpy(copy, line);
+
+  if (hist->count == HISTLEN) {
+    free(hist->lines[hist->oldest]);
+    hist->oldest = (hist->oldest + 1) % HISTLEN;
+    hist->count--;
+  }
+
+  hist->lines[hist->next] = copy;
+  hist->next = (hist->next + 1) % HISTLEN;
+  hist->count++;
+}
+
+/* Return history entry n (1-based), or NULL if n is out of range */
+char *getHistory(history *hist, int n)
+{
+  if (n < 1 || n > hist->count) {
+    return NULL;
+  }
+  return hist->lines[(hist->oldest + n - 1) % HISTLEN];
+}
+
+/* Print all history entries with their 1-based index */
+void printHistory(history *hist)
+{
+  int i;
+  int index;
+
+  for (i = 0; i < hist->count; i++) {
+    index = (hist->oldest + i) % HISTLEN;
+    printf("%d %s\n", i + 1, hist->lines[index]);
+  }
+}
+
 int main(int argc, char **argv)
 {
   process *process_list = NULL; /* head of the shell's process list */
@@ -227,6 +280,7 @@ int main(int argc, char **argv)
   pid_t pid;
   int debug = 0;
   int i;
+  history hist = {0}; /* circular command-line history (Part 4) */
 
   /* Enable debug mode if "-d" was passed on the command line */
   for (i = 1; i < argc; i++) {
