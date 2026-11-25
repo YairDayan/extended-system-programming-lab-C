@@ -44,6 +44,7 @@ void addHistory(history *hist, const char *line);
 char *getLastCommand(history *hist);
 char *getHistory(history *hist, int n);
 void printHistory(history *hist);
+void freeHistory(history *hist);
 
 /*
  * Run a command in the current process (typically after fork).
@@ -290,6 +291,22 @@ void printHistory(history *hist)
   }
 }
 
+/* Free all stored history strings and reset the queue */
+void freeHistory(history *hist)
+{
+  int i;
+  int index;
+
+  for (i = 0; i < hist->count; i++) {
+    index = (hist->oldest + i) % HISTLEN;
+    free(hist->lines[index]);
+    hist->lines[index] = NULL;
+  }
+  hist->oldest = 0;
+  hist->next = 0;
+  hist->count = 0;
+}
+
 int main(int argc, char **argv)
 {
   process *process_list = NULL; /* head of the shell's process list */
@@ -322,6 +339,32 @@ int main(int argc, char **argv)
       break; /* EOF (Ctrl+D) */
     }
 
+    /* Strip trailing newline; skip empty lines */
+    input[strcspn(input, "\n")] = '\0';
+    if (input[0] == '\0') {
+      continue;
+    }
+
+    /* History recall: !! (last non-history cmd) or !n (entry n) */
+    if (input[0] == '!') {
+      char *cmd;
+
+      if (strcmp(input, "!!") == 0) {
+        cmd = getLastCommand(&hist);
+      } else {
+        cmd = getHistory(&hist, atoi(input + 1));
+      }
+
+      if (cmd == NULL) {
+        printf("No such command in history\n");
+        continue;
+      }
+
+      printf("%s\n", cmd); /* echo the recalled command */
+      strcpy(input, cmd);  /* run it as if the user typed it */
+    }
+
+    addHistory(&hist, input); /* store the unparsed line */
     parsedLine = parseCmdLines(input);
     if (parsedLine == NULL) {
       continue;
@@ -335,6 +378,7 @@ int main(int argc, char **argv)
     if (strcmp(parsedLine->arguments[0], "quit") == 0) {
       freeCmdLines(parsedLine);
       freeProcessList(process_list); /* release tracked processes before exit */
+      freeHistory(&hist);            /* release history strings before exit */
       return 0;
     }
 
@@ -352,6 +396,13 @@ int main(int argc, char **argv)
     /* Built-in: procs — list tracked child processes */
     if (strcmp(parsedLine->arguments[0], "procs") == 0) {
       printProcessList(&process_list);
+      freeCmdLines(parsedLine);
+      continue;
+    }
+
+    /* Built-in: history — print the circular command history */
+    if (strcmp(parsedLine->arguments[0], "history") == 0) {
+      printHistory(&hist);
       freeCmdLines(parsedLine);
       continue;
     }
@@ -445,5 +496,6 @@ int main(int argc, char **argv)
     }
   }
   freeProcessList(process_list); /* EOF path: free any remaining process nodes */
+  freeHistory(&hist);            /* EOF path: free history strings */
   return 0;
 }
